@@ -438,10 +438,5 @@ Yes. Change the `BEDROCK_MODEL_ID` environment variable. The prompts are written
 
 ---
 
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
 
 **Built for the AWS Hackathon March 2026** | Uses Amazon Bedrock, Security Hub, Lambda, Step Functions, DynamoDB, EventBridge, and SNS
