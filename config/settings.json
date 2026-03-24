@@ -1,0 +1,57 @@
+{
+  "project_name": "ai-compliance-drift-detector",
+  "version": "1.0.0",
+
+  "bedrock": {
+    "model_id": "anthropic.claude-3-sonnet-20240229-v1:0",
+    "region": "us-east-1",
+    "max_tokens": 4096,
+    "temperature": 0.1
+  },
+
+  "scoring": {
+    "blast_radius_threshold": 7,
+    "auto_approve_below": 3,
+    "require_approval_above": 5
+  },
+
+  "remediation": {
+    "safe_actions": [
+      "s3_block_public_access",
+      "s3_enable_encryption",
+      "s3_enable_versioning",
+      "sg_remove_open_ingress",
+      "rds_disable_public_access",
+      "cloudtrail_enable_logging"
+    ],
+    "max_retries": 2,
+    "approval_timeout_hours": 24
+  },
+
+  "notifications": {
+    "channels": ["sns", "slack"],
+    "severity_filter": "MEDIUM",
+    "blast_radius_filter": 3
+  },
+
+  "compliance_frameworks": [
+    "CIS AWS Foundations Benchmark v1.4.0",
+    "AWS Foundational Security Best Practices",
+    "NIST 800-53 Rev 5",
+    "PCI DSS v3.2.1",
+    "HIPAA",
+    "SOC 2"
+  ],
+
+  "data_classification_tags": {
+    "pii": ["data-classification:PII", "DataClassification:PII"],
+    "financial": ["data-classification:Financial", "DataClassification:Financial"],
+    "confidential": ["data-classification:Confidential", "DataClassification:Confidential"],
+    "regulated": ["data-classification:Regulated", "compliance:HIPAA"]
+  },
+
+  "dynamodb": {
+    "ttl_days": 90,
+    "history_limit": 20
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "version": "0",
+  "id": "event-1234-5678-abcd",
+  "detail-type": "Security Hub Findings - Imported",
+  "source": "aws.securityhub",
+  "account": "123456789012",
+  "time": "2026-03-15T10:30:00Z",
+  "region": "us-east-1",
+  "detail": {
+    "findings": [
+      {
+        "SchemaVersion": "2018-10-08",
+        "Id": "arn:aws:securityhub:us-east-1:123456789012:subscription/aws-foundational-security-best-practices/v/1.0.0/S3.2/finding/a1b2c3d4",
+        "ProductArn": "arn:aws:securityhub:us-east-1::product/aws/securityhub",
+        "GeneratorId": "aws-foundational-security-best-practices/v/1.0.0/S3.2",
+        "AwsAccountId": "123456789012",
+        "Types": [
+          "Software and Configuration Checks/Industry and Regulatory Standards/AWS-Foundational-Security-Best-Practices"
+        ],
+        "FirstObservedAt": "2026-03-10T08:00:00Z",
+        "LastObservedAt": "2026-03-15T10:30:00Z",
+        "CreatedAt": "2026-03-10T08:00:00Z",
+        "UpdatedAt": "2026-03-15T10:30:00Z",
+        "Severity": {
+          "Label": "CRITICAL",
+          "Normalized": 90,
+          "Original": "CRITICAL"
+        },
+        "Title": "S3.2 S3 buckets should prohibit public read access",
+        "Description": "This control checks whether your S3 buckets allow public read access by evaluating the Block Public Access settings, the bucket policy, and the bucket access control list (ACL).",
+        "Remediation": {
+          "Recommendation": {
+            "Text": "To remediate this issue, update your S3 bucket to block public access.",
+            "Url": "https://docs.aws.amazon.com/console/securityhub/S3.2/remediation"
+          }
+        },
+        "ProductFields": {
+          "StandardsArn": "arn:aws:securityhub:::standards/aws-foundational-security-best-practices/v/1.0.0",
+          "StandardsSubscriptionArn": "arn:aws:securityhub:us-east-1:123456789012:subscription/aws-foundational-security-best-practices/v/1.0.0",
+          "ControlId": "S3.2",
+          "RecommendationUrl": "https://docs.aws.amazon.com/console/securityhub/S3.2/remediation",
+          "StandardsControlArn": "arn:aws:securityhub:us-east-1:123456789012:control/aws-foundational-security-best-practices/v/1.0.0/S3.2",
+          "aws/securityhub/ProductName": "Security Hub",
+          "aws/securityhub/CompanyName": "AWS",
+          "aws/securityhub/FindingId": "arn:aws:securityhub:us-east-1::product/aws/securityhub/arn:aws:securityhub:us-east-1:123456789012:subscription/aws-foundational-security-best-practices/v/1.0.0/S3.2/finding/a1b2c3d4"
+        },
+        "Resources": [
+          {
+            "Type": "AwsS3Bucket",
+            "Id": "arn:aws:s3:::customer-pii-data-prod",
+            "Region": "us-east-1",
+            "Details": {
+              "AwsS3Bucket": {
+                "BucketName": "customer-pii-data-prod",
+                "CreatedAt": "2025-06-15T09:00:00Z",
+                "ServerSideEncryptionConfiguration": {
+                  "Rules": []
+                }
+              }
+            }
+          }
+        ],
+        "Compliance": {
+          "Status": "FAILED",
+          "RelatedRequirements": [
+            "CIS AWS Foundations Benchmark v1.4.0/2.1.5",
+            "NIST.800-53.r5 AC-21",
+            "NIST.800-53.r5 AC-3",
+            "PCI DSS v3.2.1/1.2.1"
+          ]
+        },
+        "WorkflowState": "NEW",
+        "Workflow": {
+          "Status": "NEW"
+        },
+        "RecordState": "ACTIVE"
+      }
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "version": "0",
+  "id": "event-5678-abcd-efgh",
+  "detail-type": "Security Hub Findings - Imported",
+  "source": "aws.securityhub",
+  "account": "123456789012",
+  "time": "2026-03-15T14:00:00Z",
+  "region": "us-east-1",
+  "detail": {
+    "findings": [
+      {
+        "SchemaVersion": "2018-10-08",
+        "Id": "arn:aws:securityhub:us-east-1:123456789012:subscription/aws-foundational-security-best-practices/v/1.0.0/EC2.19/finding/e5f6g7h8",
+        "ProductArn": "arn:aws:securityhub:us-east-1::product/aws/securityhub",
+        "GeneratorId": "aws-foundational-security-best-practices/v/1.0.0/EC2.19",
+        "AwsAccountId": "123456789012",
+        "Types": [
+          "Software and Configuration Checks/Industry and Regulatory Standards/AWS-Foundational-Security-Best-Practices"
+        ],
+        "FirstObservedAt": "2026-03-12T06:00:00Z",
+        "LastObservedAt": "2026-03-15T14:00:00Z",
+        "CreatedAt": "2026-03-12T06:00:00Z",
+        "UpdatedAt": "2026-03-15T14:00:00Z",
+        "Severity": {
+          "Label": "HIGH",
+          "Normalized": 70,
+          "Original": "HIGH"
+        },
+        "Title": "EC2.19 Security groups should not allow unrestricted access to ports with high risk",
+        "Description": "This control checks whether unrestricted incoming traffic for a security group is accessible to the specified ports that have the highest risk. This control fails when any of the rules in a security group allow ingress traffic from 0.0.0.0/0 for ports 22, 3389, or database ports.",
+        "Remediation": {
+          "Recommendation": {
+            "Text": "Restrict security group rules to only allow necessary traffic.",
+            "Url": "https://docs.aws.amazon.com/console/securityhub/EC2.19/remediation"
+          }
+        },
+        "Resources": [
+          {
+            "Type": "AwsEc2SecurityGroup",
+            "Id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-0abc123def456789",
+            "Region": "us-east-1",
+            "Details": {
+              "AwsEc2SecurityGroup": {
+                "GroupName": "prod-database-sg",
+                "GroupId": "sg-0abc123def456789",
+                "VpcId": "vpc-0123456789abcdef0",
+                "IpPermissions": [
+                  {
+                    "IpProtocol": "tcp",
+                    "FromPort": 3306,
+                    "ToPort": 3306,
+                    "IpRanges": [
+                      {
+                        "CidrIp": "0.0.0.0/0",
+                        "Description": "MySQL from anywhere"
+                      }
+                    ]
+                  },
+                  {
+                    "IpProtocol": "tcp",
+                    "FromPort": 22,
+                    "ToPort": 22,
+                    "IpRanges": [
+                      {
+                        "CidrIp": "0.0.0.0/0",
+                        "Description": "SSH from anywhere"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "Compliance": {
+          "Status": "FAILED"
+        },
+        "Workflow": {
+          "Status": "NEW"
+        },
+        "RecordState": "ACTIVE"
+      }
+    ]
+  }
+}

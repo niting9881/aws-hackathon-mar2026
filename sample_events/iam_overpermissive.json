@@ -1,0 +1,61 @@
+{
+  "version": "0",
+  "id": "event-9012-ijkl-mnop",
+  "detail-type": "Security Hub Findings - Imported",
+  "source": "aws.securityhub",
+  "account": "123456789012",
+  "time": "2026-03-16T09:00:00Z",
+  "region": "us-east-1",
+  "detail": {
+    "findings": [
+      {
+        "SchemaVersion": "2018-10-08",
+        "Id": "arn:aws:securityhub:us-east-1:123456789012:subscription/aws-foundational-security-best-practices/v/1.0.0/IAM.1/finding/i9j0k1l2",
+        "ProductArn": "arn:aws:securityhub:us-east-1::product/aws/securityhub",
+        "GeneratorId": "aws-foundational-security-best-practices/v/1.0.0/IAM.1",
+        "AwsAccountId": "123456789012",
+        "Types": [
+          "Software and Configuration Checks/Industry and Regulatory Standards/AWS-Foundational-Security-Best-Practices"
+        ],
+        "FirstObservedAt": "2026-03-01T12:00:00Z",
+        "LastObservedAt": "2026-03-16T09:00:00Z",
+        "CreatedAt": "2026-03-01T12:00:00Z",
+        "UpdatedAt": "2026-03-16T09:00:00Z",
+        "Severity": {
+          "Label": "HIGH",
+          "Normalized": 70,
+          "Original": "HIGH"
+        },
+        "Title": "IAM.1 IAM policies should not allow full \"*\" administrative privileges",
+        "Description": "This control checks whether the default version of IAM policies (also known as customer managed policies) has administrator access that includes a statement with \"Effect\": \"Allow\" with \"Action\": \"*\" over \"Resource\": \"*\".",
+        "Remediation": {
+          "Recommendation": {
+            "Text": "Replace wildcard policies with least-privilege access.",
+            "Url": "https://docs.aws.amazon.com/console/securityhub/IAM.1/remediation"
+          }
+        },
+        "Resources": [
+          {
+            "Type": "AwsIamRole",
+            "Id": "arn:aws:iam::123456789012:role/legacy-deployment-role",
+            "Region": "us-east-1",
+            "Details": {
+              "AwsIamRole": {
+                "RoleName": "legacy-deployment-role",
+                "CreateDate": "2024-01-15T10:00:00Z",
+                "MaxSessionDuration": 3600
+              }
+            }
+          }
+        ],
+        "Compliance": {
+          "Status": "FAILED"
+        },
+        "Workflow": {
+          "Status": "NEW"
+        },
+        "RecordState": "ACTIVE"
+      }
+    ]
+  }
+}

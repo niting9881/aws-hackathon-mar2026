@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compliance Drift Detector — Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #1a1d27;
+    --bg3: #242836;
+    --border: #2d3348;
+    --text: #e4e6ef;
+    --text2: #8b8fa7;
+    --accent: #6366f1;
+    --accent2: #818cf8;
+    --red: #ef4444;
+    --orange: #f97316;
+    --yellow: #eab308;
+    --green: #22c55e;
+    --teal: #14b8a6;
+    --blue: #3b82f6;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Inter',-apple-system,sans-serif; font-size:14px; }
+  .dashboard { max-width:1280px; margin:0 auto; padding:24px; }
+  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; }
+  .header h1 { font-size:22px; font-weight:600; }
+  .header h1 span { color:var(--accent2); }
+  .header-meta { display:flex; gap:16px; align-items:center; }
+  .status-dot { width:8px; height:8px; border-radius:50%; background:var(--green); display:inline-block; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .header-meta span { color:var(--text2); font-size:13px; }
+
+  .metrics { display:grid; grid-template-columns:repeat(5,1fr); gap:16px; margin-bottom:28px; }
+  .metric-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  .metric-card .label { font-size:12px; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
+  .metric-card .value { font-size:28px; font-weight:700; }
+  .metric-card .change { font-size:12px; margin-top:6px; }
+  .metric-card .change.up { color:var(--red); }
+  .metric-card .change.down { color:var(--green); }
+
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:28px; }
+  .grid-3 { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:28px; }
+  .card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  .card h3 { font-size:14px; font-weight:600; margin-bottom:16px; color:var(--text2); }
+  .chart-wrap { position:relative; height:220px; }
+
+  .findings-table { width:100%; border-collapse:collapse; }
+  .findings-table th { text-align:left; padding:10px 12px; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--text2); border-bottom:1px solid var(--border); }
+  .findings-table td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:13px; }
+  .findings-table tr:hover { background:var(--bg3); }
+
+  .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; }
+  .badge.critical { background:rgba(239,68,68,.15); color:var(--red); }
+  .badge.high { background:rgba(249,115,22,.15); color:var(--orange); }
+  .badge.medium { background:rgba(234,179,8,.15); color:var(--yellow); }
+  .badge.low { background:rgba(34,197,94,.15); color:var(--green); }
+
+  .score-bar { display:flex; align-items:center; gap:8px; }
+  .score-fill { height:6px; border-radius:3px; }
+  .score-num { font-size:12px; font-weight:600; min-width:24px; }
+
+  .status-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:500; }
+  .status-badge.triaged { background:rgba(99,102,241,.15); color:var(--accent2); }
+  .status-badge.remediated { background:rgba(34,197,94,.15); color:var(--green); }
+  .status-badge.pending { background:rgba(234,179,8,.15); color:var(--yellow); }
+  .status-badge.failed { background:rgba(239,68,68,.15); color:var(--red); }
+
+  .cluster-item { padding:12px; border:1px solid var(--border); border-radius:8px; margin-bottom:8px; }
+  .cluster-item .cluster-title { font-weight:600; font-size:13px; margin-bottom:4px; }
+  .cluster-item .cluster-meta { font-size:12px; color:var(--text2); }
+  .cluster-item .cluster-fix { font-size:12px; color:var(--teal); margin-top:6px; }
+
+  .filter-bar { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+  .filter-btn { padding:6px 14px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text2); cursor:pointer; font-size:12px; transition:all .15s; }
+  .filter-btn:hover, .filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <div class="header">
+    <h1><span>AI</span> Compliance Drift Detector</h1>
+    <div class="header-meta">
+      <span><span class="status-dot"></span> Live monitoring</span>
+      <span>Last scan: 2 min ago</span>
+      <span>3 accounts · us-east-1</span>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="label">Total findings</div>
+      <div class="value">487</div>
+      <div class="change up">↑ 23 from last week</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Critical (score 8+)</div>
+      <div class="value" style="color:var(--red)">12</div>
+      <div class="change down">↓ 4 after remediation</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Auto-remediated</div>
+      <div class="value" style="color:var(--green)">38</div>
+      <div class="change down">↑ 12 this week</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Root cause clusters</div>
+      <div class="value" style="color:var(--accent2)">14</div>
+      <div class="change">487 → 14 clusters</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">MTTR</div>
+      <div class="value" style="color:var(--teal)">18m</div>
+      <div class="change down">↓ from 4.2 days</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>Blast radius distribution</h3>
+      <div class="chart-wrap"><canvas id="blastChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Findings by category</h3>
+      <div class="chart-wrap"><canvas id="categoryChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <h3>Findings trend (30 days)</h3>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Root cause clusters</h3>
+      <div class="cluster-item">
+        <div class="cluster-title">Missing S3 encryption in CFN template</div>
+        <div class="cluster-meta">47 findings · 12 accounts</div>
+        <div class="cluster-fix">Fix: Add SSE config to base CloudFormation template</div>
+      </div>
+      <div class="cluster-item">
+        <div class="cluster-title">Default security groups too permissive</div>
+        <div class="cluster-meta">31 findings · 8 accounts</div>
+        <div class="cluster-fix">Fix: Update VPC module to restrict default SG</div>
+      </div>
+      <div class="cluster-item">
+        <div class="cluster-title">Legacy IAM roles with admin access</div>
+        <div class="cluster-meta">9 findings · 3 accounts</div>
+        <div class="cluster-fix">Fix: Run IAM Access Analyzer and scope down</div>
+      </div>
+      <div class="cluster-item">
+        <div class="cluster-title">CloudTrail not enabled in new regions</div>
+        <div class="cluster-meta">6 findings · 6 accounts</div>
+        <div class="cluster-fix">Fix: Enable org-wide CloudTrail with multi-region</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Recent findings — sorted by blast radius</h3>
+    <div class="filter-bar">
+      <button class="filter-btn active" onclick="filterAll(this)">All</button>
+      <button class="filter-btn" onclick="filterAll(this)">Critical (8+)</button>
+      <button class="filter-btn" onclick="filterAll(this)">Pending approval</button>
+      <button class="filter-btn" onclick="filterAll(this)">Remediated</button>
+      <button class="filter-btn" onclick="filterAll(this)">S3</button>
+      <button class="filter-btn" onclick="filterAll(this)">IAM</button>
+      <button class="filter-btn" onclick="filterAll(this)">EC2</button>
+    </div>
+    <table class="findings-table">
+      <thead>
+        <tr>
+          <th>Blast radius</th>
+          <th>Resource</th>
+          <th>Finding</th>
+          <th>Account</th>
+          <th>Severity</th>
+          <th>Framework</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="findingsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const findings = [
+  { score:9, resource:"customer-pii-data-prod", type:"S3 Bucket", title:"S3 bucket allows public read access", account:"123456789012", severity:"critical", framework:"CIS / NIST", status:"pending" },
+  { score:9, resource:"payment-records-2026", type:"S3 Bucket", title:"S3 bucket missing encryption", account:"234567890123", severity:"critical", framework:"PCI DSS", status:"triaged" },
+  { score:8, resource:"prod-database-sg", type:"Security Group", title:"Unrestricted MySQL + SSH ingress", account:"123456789012", severity:"high", framework:"AWS FSBP", status:"remediated" },
+  { score:8, resource:"api-gateway-sg", type:"Security Group", title:"Port 443 open to 0.0.0.0/0", account:"345678901234", severity:"high", framework:"CIS", status:"triaged" },
+  { score:7, resource:"legacy-deployment-role", type:"IAM Role", title:"Full admin privileges (Action: *)", account:"123456789012", severity:"high", framework:"AWS FSBP", status:"pending" },
+  { score:7, resource:"ci-cd-pipeline-role", type:"IAM Role", title:"Overly permissive cross-account access", account:"234567890123", severity:"high", framework:"NIST", status:"triaged" },
+  { score:6, resource:"staging-app-bucket", type:"S3 Bucket", title:"Versioning not enabled", account:"345678901234", severity:"medium", framework:"CIS", status:"remediated" },
+  { score:5, resource:"dev-logs-bucket", type:"S3 Bucket", title:"No lifecycle policy configured", account:"123456789012", severity:"medium", framework:"AWS FSBP", status:"remediated" },
+  { score:4, resource:"test-lambda-role", type:"IAM Role", title:"Unused role with network permissions", account:"234567890123", severity:"medium", framework:"AWS FSBP", status:"triaged" },
+  { score:3, resource:"dev-web-sg", type:"Security Group", title:"HTTP open in dev environment", account:"345678901234", severity:"low", framework:"CIS", status:"remediated" },
+];
+
+function scoreColor(s) { return s>=8?'var(--red)':s>=5?'var(--orange)':s>=3?'var(--yellow)':'var(--green)'; }
+
+function renderFindings() {
+  const tbody = document.getElementById('findingsBody');
+  tbody.innerHTML = findings.map(f => `<tr>
+    <td><div class="score-bar"><div class="score-fill" style="width:${f.score*10}%;background:${scoreColor(f.score)};min-width:${f.score*10}px"></div><span class="score-num" style="color:${scoreColor(f.score)}">${f.score}/10</span></div></td>
+    <td><strong>${f.resource}</strong><br><span style="color:var(--text2);font-size:11px">${f.type}</span></td>
+    <td>${f.title}</td>
+    <td style="font-family:monospace;font-size:12px">${f.account}</td>
+    <td><span class="badge ${f.severity}">${f.severity}</span></td>
+    <td style="font-size:12px">${f.framework}</td>
+    <td><span class="status-badge ${f.status}">${f.status}</span></td>
+  </tr>`).join('');
+}
+renderFindings();
+
+function filterAll(btn) {
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// Blast radius chart
+new Chart(document.getElementById('blastChart'), {
+  type:'bar',
+  data:{
+    labels:['1','2','3','4','5','6','7','8','9','10'],
+    datasets:[{
+      label:'Findings',
+      data:[12,28,45,38,52,67,89,42,18,8],
+      backgroundColor:['#22c55e','#22c55e','#22c55e','#eab308','#eab308','#f97316','#f97316','#ef4444','#ef4444','#ef4444'],
+      borderRadius:4, barThickness:24
+    }]
+  },
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#8b8fa7'}},y:{grid:{color:'#2d3348'},ticks:{color:'#8b8fa7'}}}}
+});
+
+// Category chart
+new Chart(document.getElementById('categoryChart'), {
+  type:'doughnut',
+  data:{
+    labels:['Encryption','Public access','IAM','Networking','Logging','Data protection'],
+    datasets:[{data:[120,95,68,82,54,68],backgroundColor:['#6366f1','#ef4444','#f97316','#3b82f6','#14b8a6','#eab308'],borderWidth:0}]
+  },
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#8b8fa7',font:{size:11},boxWidth:12,padding:8}}},cutout:'65%'}
+});
+
+// Trend chart
+const days = Array.from({length:30},(_,i)=>`Mar ${i+1}`);
+new Chart(document.getElementById('trendChart'), {
+  type:'line',
+  data:{
+    labels:days,
+    datasets:[
+      {label:'New findings',data:[18,22,15,28,35,20,12,25,30,18,22,40,35,28,15,20,25,18,32,28,22,15,20,35,28,22,18,23,20,15],borderColor:'#ef4444',backgroundColor:'rgba(239,68,68,.1)',fill:true,tension:.4,pointRadius:0,borderWidth:2},
+      {label:'Remediated',data:[5,8,12,10,15,18,22,14,20,25,18,15,22,28,20,15,18,22,25,20,28,18,15,22,18,25,20,22,25,18],borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.4,pointRadius:0,borderWidth:2}
+    ]
+  },
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b8fa7',font:{size:11},boxWidth:12}}},scales:{x:{grid:{display:false},ticks:{color:'#8b8fa7',maxTicksLimit:10,font:{size:10}}},y:{grid:{color:'#2d3348'},ticks:{color:'#8b8fa7'}}}}
+});
+</script>
+</body>
+</html>

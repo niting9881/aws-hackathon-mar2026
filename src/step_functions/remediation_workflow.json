@@ -1,0 +1,234 @@
+{
+  "Comment": "AI Compliance Drift Detector - Remediation Workflow with Human Approval",
+  "StartAt": "EvaluateBlastRadius",
+  "States": {
+    "EvaluateBlastRadius": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.finding.blast_radius_score",
+          "NumericGreaterThanEquals": 8,
+          "Next": "RequireHumanApproval"
+        },
+        {
+          "Variable": "$.finding.blast_radius_score",
+          "NumericGreaterThanEquals": 5,
+          "Next": "RequireHumanApproval"
+        },
+        {
+          "Variable": "$.finding.blast_radius_score",
+          "NumericLessThan": 5,
+          "Next": "CheckAutoApproval"
+        }
+      ],
+      "Default": "RequireHumanApproval"
+    },
+
+    "CheckAutoApproval": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.finding.blast_radius_score",
+          "NumericLessThanEquals": 3,
+          "Next": "AutoApproveRemediation"
+        }
+      ],
+      "Default": "RequireHumanApproval"
+    },
+
+    "AutoApproveRemediation": {
+      "Type": "Pass",
+      "Result": {
+        "approved": true,
+        "approved_by": "auto-policy",
+        "reason": "Blast radius score <= 3, auto-approved per policy"
+      },
+      "ResultPath": "$.approval",
+      "Next": "ExecuteRemediation"
+    },
+
+    "RequireHumanApproval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish.waitForTaskToken",
+      "Parameters": {
+        "TopicArn": "${ApprovalSNSTopicArn}",
+        "Subject": "🔔 Remediation Approval Required",
+        "Message.$": "States.Format('Approval required for compliance finding:\\n\\nResource: {}\\nBlast Radius: {}/10\\nFinding: {}\\n\\nApprove: {}\\nDeny: {}\\n\\nTask Token: {}', $.finding.resource_id, $.finding.blast_radius_score, $.finding.title, '${ApprovalApiUrl}/approve', '${ApprovalApiUrl}/deny', $$.Task.Token)"
+      },
+      "ResultPath": "$.approval",
+      "TimeoutSeconds": 86400,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "Next": "ApprovalTimedOut"
+        }
+      ],
+      "Next": "CheckApprovalDecision"
+    },
+
+    "CheckApprovalDecision": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.approval.approved",
+          "BooleanEquals": true,
+          "Next": "ExecuteRemediation"
+        }
+      ],
+      "Default": "RemediationDenied"
+    },
+
+    "ExecuteRemediation": {
+      "Type": "Task",
+      "Resource": "${RemediationLambdaArn}",
+      "Parameters": {
+        "finding.$": "$.finding",
+        "remediation.$": "$.remediation",
+        "approved_by.$": "$.approval.approved_by"
+      },
+      "ResultPath": "$.remediation_result",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "RemediationFailed"
+        }
+      ],
+      "Next": "VerifyRemediation"
+    },
+
+    "VerifyRemediation": {
+      "Type": "Task",
+      "Resource": "${VerificationLambdaArn}",
+      "Parameters": {
+        "finding.$": "$.finding",
+        "remediation_result.$": "$.remediation_result"
+      },
+      "ResultPath": "$.verification",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "VerificationFailed"
+        }
+      ],
+      "Next": "NotifySuccess"
+    },
+
+    "NotifySuccess": {
+      "Type": "Task",
+      "Resource": "${NotifierLambdaArn}",
+      "Parameters": {
+        "event_type": "remediation_complete",
+        "remediation_status": "SUCCESS",
+        "finding.$": "$.finding",
+        "details.$": "$.verification"
+      },
+      "Next": "UpdateFindingStatus"
+    },
+
+    "UpdateFindingStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "${FindingsTable}",
+        "Item": {
+          "resource_id": {"S.$": "$.finding.resource_id"},
+          "sort_key": {"S.$": "$$.State.EnteredTime"},
+          "status": {"S": "REMEDIATED"},
+          "finding_id": {"S.$": "$.finding.finding_id"},
+          "blast_radius_score": {"N.$": "States.Format('{}', $.finding.blast_radius_score)"}
+        }
+      },
+      "Next": "WorkflowComplete"
+    },
+
+    "WorkflowComplete": {
+      "Type": "Succeed"
+    },
+
+    "RemediationDenied": {
+      "Type": "Task",
+      "Resource": "${NotifierLambdaArn}",
+      "Parameters": {
+        "event_type": "remediation_complete",
+        "remediation_status": "DENIED",
+        "finding.$": "$.finding",
+        "details": "Remediation was denied by approver"
+      },
+      "Next": "WorkflowDenied"
+    },
+
+    "WorkflowDenied": {
+      "Type": "Succeed"
+    },
+
+    "ApprovalTimedOut": {
+      "Type": "Task",
+      "Resource": "${NotifierLambdaArn}",
+      "Parameters": {
+        "event_type": "remediation_complete",
+        "remediation_status": "TIMED_OUT",
+        "finding.$": "$.finding",
+        "details": "Approval request timed out after 24 hours"
+      },
+      "Next": "WorkflowTimedOut"
+    },
+
+    "WorkflowTimedOut": {
+      "Type": "Fail",
+      "Error": "ApprovalTimeout",
+      "Cause": "No approval received within 24 hours"
+    },
+
+    "RemediationFailed": {
+      "Type": "Task",
+      "Resource": "${NotifierLambdaArn}",
+      "Parameters": {
+        "event_type": "remediation_complete",
+        "remediation_status": "FAILED",
+        "finding.$": "$.finding",
+        "details": "Automated remediation failed — manual intervention required"
+      },
+      "Next": "WorkflowFailed"
+    },
+
+    "WorkflowFailed": {
+      "Type": "Fail",
+      "Error": "RemediationFailed",
+      "Cause": "Automated remediation could not be completed"
+    },
+
+    "VerificationFailed": {
+      "Type": "Task",
+      "Resource": "${NotifierLambdaArn}",
+      "Parameters": {
+        "event_type": "remediation_complete",
+        "remediation_status": "VERIFICATION_FAILED",
+        "finding.$": "$.finding",
+        "details": "Remediation was applied but verification check failed"
+      },
+      "Next": "WorkflowVerificationFailed"
+    },
+
+    "WorkflowVerificationFailed": {
+      "Type": "Fail",
+      "Error": "VerificationFailed",
+      "Cause": "Post-remediation verification did not pass"
+    }
+  }
+}

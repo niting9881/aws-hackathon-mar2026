@@ -1,0 +1,446 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AI-Powered Compliance Drift Detector
+  Detects, triages, and auto-remediates AWS compliance drift using
+  Amazon Bedrock for intelligent analysis and prioritization.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-sonnet-20240229-v1:0
+  BlastRadiusThreshold:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 10
+  SlackWebhookUrl:
+    Type: String
+    Default: ""
+    NoEcho: true
+  NotificationEmail:
+    Type: String
+    Default: ""
+
+Conditions:
+  HasSlackWebhook: !Not [!Equals [!Ref SlackWebhookUrl, ""]]
+  HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, ""]]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 300
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        FINDINGS_TABLE: !Ref FindingsTable
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+        BEDROCK_REGION: !Ref AWS::Region
+
+Resources:
+  # =========================================================================
+  # DynamoDB Table — stores enriched findings
+  # =========================================================================
+  FindingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "ComplianceFindings-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resource_id
+          AttributeType: S
+        - AttributeName: sort_key
+          AttributeType: S
+        - AttributeName: account_id
+          AttributeType: S
+        - AttributeName: blast_radius_score
+          AttributeType: N
+      KeySchema:
+        - AttributeName: resource_id
+          KeyType: HASH
+        - AttributeName: sort_key
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: AccountIndex
+          KeySchema:
+            - AttributeName: account_id
+              KeyType: HASH
+            - AttributeName: blast_radius_score
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: ComplianceDriftDetector
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =========================================================================
+  # SNS Topics
+  # =========================================================================
+  FindingsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "compliance-findings-${Environment}"
+      Tags:
+        - Key: Project
+          Value: ComplianceDriftDetector
+
+  ApprovalTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "compliance-approval-${Environment}"
+      Tags:
+        - Key: Project
+          Value: ComplianceDriftDetector
+
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasNotificationEmail
+    Properties:
+      TopicArn: !Ref FindingsTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  # =========================================================================
+  # IAM Roles
+  # =========================================================================
+  TriageLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ComplianceTriage-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: TriagePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt FindingsTable.Arn
+                  - !Sub "${FindingsTable.Arn}/index/*"
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource:
+                  - !Ref FindingsTopic
+                  - !Ref ApprovalTopic
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: !Ref RemediationStateMachine
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketEncryption
+                  - s3:GetBucketVersioning
+                  - s3:GetBucketPublicAccessBlock
+                  - ec2:DescribeSecurityGroups
+                  - iam:GetRole
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListRolePolicies
+                  - rds:DescribeDBInstances
+                  - tag:GetResources
+                  - securityhub:GetFindings
+                Resource: "*"
+
+  RemediationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ComplianceRemediation-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: RemediationPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt FindingsTable.Arn
+              - Effect: Allow
+                Action:
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:PutEncryptionConfiguration
+                  - s3:PutBucketVersioning
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:DescribeSecurityGroups
+                  - rds:ModifyDBInstance
+                Resource: "*"
+
+  NotifierLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ComplianceNotifier-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: NotifierPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource:
+                  - !Ref FindingsTopic
+
+  StepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ComplianceWorkflow-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WorkflowPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt RemediationFunction.Arn
+                  - !GetAtt NotifierFunction.Arn
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref ApprovalTopic
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt FindingsTable.Arn
+
+  # =========================================================================
+  # Lambda Functions
+  # =========================================================================
+  TriageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "compliance-triage-${Environment}"
+      Handler: src/lambdas/triage/handler.handler
+      CodeUri: .
+      Role: !GetAtt TriageLambdaRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref FindingsTopic
+          STATE_MACHINE_ARN: !Ref RemediationStateMachine
+          BLAST_RADIUS_THRESHOLD: !Ref BlastRadiusThreshold
+      Events:
+        SecurityHubFinding:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.securityhub
+              detail-type:
+                - Security Hub Findings - Imported
+            Target:
+              Id: TriageLambdaTarget
+
+  RemediationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "compliance-remediation-${Environment}"
+      Handler: src/lambdas/remediation/handler.handler
+      CodeUri: .
+      Role: !GetAtt RemediationLambdaRole.Arn
+      Timeout: 600
+
+  NotifierFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "compliance-notifier-${Environment}"
+      Handler: src/lambdas/notifier/handler.handler
+      CodeUri: .
+      Role: !GetAtt NotifierLambdaRole.Arn
+      Environment:
+        Variables:
+          SLACK_WEBHOOK_URL: !If [HasSlackWebhook, !Ref SlackWebhookUrl, ""]
+          SNS_TOPIC_ARN: !Ref FindingsTopic
+
+  # =========================================================================
+  # Step Functions State Machine
+  # =========================================================================
+  RemediationStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "compliance-remediation-${Environment}"
+      RoleArn: !GetAtt StepFunctionsRole.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Compliance Drift Remediation Workflow",
+          "StartAt": "EvaluateBlastRadius",
+          "States": {
+            "EvaluateBlastRadius": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.finding.blast_radius_score",
+                  "NumericGreaterThanEquals": 5,
+                  "Next": "SendApprovalRequest"
+                }
+              ],
+              "Default": "AutoApprove"
+            },
+            "AutoApprove": {
+              "Type": "Pass",
+              "Result": {"approved": true, "approved_by": "auto-policy"},
+              "ResultPath": "$.approval",
+              "Next": "ExecuteRemediation"
+            },
+            "SendApprovalRequest": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish.waitForTaskToken",
+              "Parameters": {
+                "TopicArn": "${ApprovalTopic}",
+                "Subject": "Remediation Approval Required",
+                "Message.$": "States.Format('Approve remediation for: {}\\nBlast radius: {}/10\\nTask token: {}', $.finding.resource_id, $.finding.blast_radius_score, $$.Task.Token)"
+              },
+              "ResultPath": "$.approval",
+              "TimeoutSeconds": 86400,
+              "Catch": [{"ErrorEquals": ["States.Timeout"], "Next": "TimedOut"}],
+              "Next": "ExecuteRemediation"
+            },
+            "ExecuteRemediation": {
+              "Type": "Task",
+              "Resource": "${RemediationFunction.Arn}",
+              "Parameters": {
+                "finding.$": "$.finding",
+                "remediation.$": "$.remediation",
+                "approved_by.$": "$.approval.approved_by"
+              },
+              "ResultPath": "$.result",
+              "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "NotifyFailure"}],
+              "Next": "NotifySuccess"
+            },
+            "NotifySuccess": {
+              "Type": "Task",
+              "Resource": "${NotifierFunction.Arn}",
+              "Parameters": {
+                "event_type": "remediation_complete",
+                "remediation_status": "SUCCESS",
+                "finding.$": "$.finding",
+                "details.$": "$.result"
+              },
+              "End": true
+            },
+            "NotifyFailure": {
+              "Type": "Task",
+              "Resource": "${NotifierFunction.Arn}",
+              "Parameters": {
+                "event_type": "remediation_complete",
+                "remediation_status": "FAILED",
+                "finding.$": "$.finding",
+                "details": "Remediation failed"
+              },
+              "Next": "Failed"
+            },
+            "TimedOut": {
+              "Type": "Fail",
+              "Error": "ApprovalTimeout",
+              "Cause": "No approval within 24 hours"
+            },
+            "Failed": {
+              "Type": "Fail",
+              "Error": "RemediationFailed"
+            }
+          }
+        }
+      Tags:
+        - Key: Project
+          Value: ComplianceDriftDetector
+
+  # =========================================================================
+  # EventBridge Rule for Config Changes
+  # =========================================================================
+  ConfigChangeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "config-compliance-change-${Environment}"
+      Description: Captures AWS Config compliance status changes
+      EventPattern:
+        source:
+          - aws.config
+        detail-type:
+          - Config Rules Compliance Change
+      Targets:
+        - Arn: !GetAtt TriageFunction.Arn
+          Id: ConfigToTriage
+
+  ConfigRulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriageFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ConfigChangeRule.Arn
+
+Outputs:
+  TriageFunctionArn:
+    Description: Triage Lambda ARN
+    Value: !GetAtt TriageFunction.Arn
+
+  RemediationFunctionArn:
+    Description: Remediation Lambda ARN
+    Value: !GetAtt RemediationFunction.Arn
+
+  StateMachineArn:
+    Description: Remediation workflow state machine ARN
+    Value: !Ref RemediationStateMachine
+
+  FindingsTableName:
+    Description: DynamoDB findings table name
+    Value: !Ref FindingsTable
+
+  FindingsTopicArn:
+    Description: SNS topic for finding notifications
+    Value: !Ref FindingsTopic
+
+  DashboardUrl:
+    Description: QuickSight dashboard URL (configure after deployment)
+    Value: !Sub "https://${AWS::Region}.quicksight.aws.amazon.com/sn/dashboards/compliance-drift-${Environment}"
