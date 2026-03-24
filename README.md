@@ -2,10 +2,10 @@
 
 > **Turn thousands of noisy security findings into a ranked action plan with one-click fixes — powered by Amazon Bedrock.**
 
-[![CI/CD](https://github.com/niting9881/aws-hackathon-mar2026/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/niting9881/aws-hackathon-mar2026/actions)
+[(https://github.com/niting9881/aws-hackathon-mar2026/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/niting9881/aws-hackathon-mar2026/actions)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 
 ---
 
