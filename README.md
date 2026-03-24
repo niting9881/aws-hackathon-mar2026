@@ -59,7 +59,6 @@ Analyzes historical patterns to flag resources likely to drift again:
 
 ## Technology Architecture
 
-```
 <img width="526" height="473" alt="image" src="https://github.com/user-attachments/assets/61489520-26fc-4f90-ae7d-79dbd3fcdad7" />
 
 ---
